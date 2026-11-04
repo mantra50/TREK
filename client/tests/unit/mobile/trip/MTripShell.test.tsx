@@ -202,6 +202,24 @@ describe('MTripShell', () => {
     expect(screen.queryByRole('button', { name: 'Sat 2' })).not.toBeInTheDocument()
   })
 
+  it('FE-MOB-SHELL-007b: re-seeds after re-entering the same trip from the dashboard', () => {
+    const { planner, rerenderShell } = renderShell()
+    expect(planner.tripActions.setSelectedDay).not.toHaveBeenCalled()
+
+    // The dashboard leaves the previous trip snapshot in the store. loadTrip
+    // clears that selection while it reloads the same trip.
+    planner.isLoading = true
+    planner.days = []
+    planner.selectedDayId = null
+    rerenderShell()
+
+    planner.isLoading = false
+    planner.days = DAYS
+    rerenderShell()
+
+    expect(planner.tripActions.setSelectedDay).toHaveBeenCalledWith(11)
+  })
+
   it('FE-MOB-SHELL-008: the back button leaves for the dashboard', () => {
     const { planner } = renderShell()
     fireEvent.click(screen.getByRole('button', { name: 'common.back' }))
@@ -551,12 +569,68 @@ describe('MTripShell', () => {
 
     afterEach(() => { vi.restoreAllMocks() })
 
-    it('FE-MOB-SHELL-044: a clipped active chip pulls itself into the middle of the rail', () => {
+    it('FE-MOB-SHELL-044: a clipped active chip is in the middle of the rail the moment it appears', () => {
       const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
       scrollIntoView.mockClear()
       stubRects({ left: 480, right: 540 })
       renderShell({ selectedDayId: 12 } as Partial<TripPlanner>)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', inline: 'center', block: 'nearest' })
+    })
+
+    it('FE-MOB-SHELL-093: a later day change on the rail glides to the chip', () => {
+      const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+      stubRects({ left: 480, right: 540 })
+      const { planner, rerenderShell } = renderShell({ selectedDayId: 11 } as Partial<TripPlanner>)
+      scrollIntoView.mockClear()
+
+      ;(planner as { selectedDayId: number | null }).selectedDayId = 12
+      rerenderShell()
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+    })
+
+    // #2880: the day is seeded while the splash still covers the shell, so the
+    // rail only exists after the selection has settled.
+    it('FE-MOB-SHELL-094: the active day is brought into view once the splash lifts (#2880)', () => {
+      const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+      scrollIntoView.mockClear()
+      stubRects({ left: 480, right: 540 })
+      const { planner, rerenderShell } = renderShell({ selectedDayId: 12, splashDone: false } as Partial<TripPlanner>)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+
+      ;(planner as { splashDone: boolean }).splashDone = true
+      rerenderShell()
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', inline: 'center', block: 'nearest' })
+    })
+
+    it('FE-MOB-SHELL-095: after the splash a chip already in view leaves the rail alone', () => {
+      const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+      scrollIntoView.mockClear()
+      stubRects({ left: 40, right: 100 })
+      const { planner, rerenderShell } = renderShell({ selectedDayId: 12, splashDone: false } as Partial<TripPlanner>)
+
+      ;(planner as { splashDone: boolean }).splashDone = true
+      rerenderShell()
+
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+
+    it('FE-MOB-SHELL-096: re-entering the trip lines the rail up again without a glide', () => {
+      const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+      stubRects({ left: 480, right: 540 })
+      const { planner, rerenderShell } = renderShell({ selectedDayId: 12 } as Partial<TripPlanner>)
+
+      ;(planner as { isLoading: boolean }).isLoading = true
+      rerenderShell()
+      scrollIntoView.mockClear()
+      ;(planner as { isLoading: boolean }).isLoading = false
+      rerenderShell()
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', inline: 'center', block: 'nearest' })
     })
 
     it('FE-MOB-SHELL-045: a chip already in view never shifts the rail under the thumb', () => {
@@ -578,6 +652,47 @@ describe('MTripShell', () => {
       }) as unknown as MediaQueryList)
       renderShell({ selectedDayId: 12 } as Partial<TripPlanner>)
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', inline: 'center', block: 'nearest' })
+    })
+  })
+
+  // #2392 — on the road the phone plan is used one day at a time, and finding today
+  // again meant scrolling the rail; today is marked and one tap away.
+  describe('today on the day rail (#2392)', () => {
+    const shift = (days: number) => {
+      const d = new Date()
+      d.setDate(d.getDate() + days)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    const running = () => [
+      { id: 21, day_number: 1, date: shift(-1) },
+      { id: 22, day_number: 2, date: todayIso() },
+      { id: 23, day_number: 3, date: shift(1) },
+    ] as unknown as Day[]
+    const jump = () => screen.getByRole('button', { name: 'mobileTrip.jumpToToday' })
+
+    it('FE-MOB-SHELL-090: marks today and jumps back to it from another day', () => {
+      const { planner, container } = renderShell({ days: running(), selectedDayId: 21 } as Partial<TripPlanner>)
+      const marked = container.querySelectorAll('[data-today]')
+      expect(marked).toHaveLength(1)
+      expect(marked[0].className).toContain('ring-inset')
+      expect(marked[0]).toHaveTextContent('mobileTrip.today')
+
+      expect(jump()).toBeEnabled()
+      fireEvent.click(jump())
+      expect(planner.handleSelectDay).toHaveBeenLastCalledWith(22, true)
+    })
+
+    it('FE-MOB-SHELL-091: with today open the button stays, dimmed, so the rail does not move', () => {
+      const { container } = renderShell({ days: running(), selectedDayId: 22 } as Partial<TripPlanner>)
+      expect(jump()).toBeDisabled()
+      // The active chip keeps its own look; the dot still says which day is today.
+      expect(container.querySelector('[data-today]')?.className).not.toContain('ring-inset')
+    })
+
+    it('FE-MOB-SHELL-092: outside the trip dates there is no today and no button', () => {
+      const { container } = renderShell()
+      expect(container.querySelector('[data-today]')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'mobileTrip.jumpToToday' })).toBeNull()
     })
   })
 
