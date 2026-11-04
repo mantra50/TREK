@@ -64,11 +64,14 @@ COPY server/package.json ./server/
 # gypfile:false (npm/cli#9837). The only other install scripts among the runtime
 # deps are esbuild's binary check, redundant next to its optional platform
 # package, and a telemetry ping.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends tzdata dumb-init wget ca-certificates \
-    libkitinerary-bin libsqlite3-0 && \
+RUN apt-get -o Acquire::Retries=3 update && \
+    for attempt in 1 2 3; do \
+      if apt-get -o Acquire::Retries=3 install -y --no-install-recommends tzdata dumb-init wget ca-certificates \
+        libkitinerary-bin libsqlite3-0; then break; fi; \
+      if [ "$attempt" = 3 ]; then exit 1; fi; \
+    done && \
     npm ci --workspace=server --omit=dev --ignore-scripts && \
-    ln -sf "$(find /usr/lib -name kitinerary-extractor -type f | head -1)" /usr/local/bin/kitinerary-extractor; \
+    ln -sf "$(find /usr/lib -name kitinerary-extractor -type f | head -1)" /usr/local/bin/kitinerary-extractor && \
     rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx && \
     chown -R node:node /app
 
