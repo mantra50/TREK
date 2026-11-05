@@ -581,7 +581,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
-      <footer className="bg-surface-primary px-4 pt-3 pb-24 text-center text-xs text-content-muted md:pb-4">
+      <footer className="bg-surface-primary px-4 pt-3 pb-24 text-center text-caption text-content-muted md:pb-4">
         <a
           href="https://beian.miit.gov.cn/"
           target="_blank"
