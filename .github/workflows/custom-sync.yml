@@ -31,11 +31,12 @@ jobs:
         with:
           ref: ${{ env.CUSTOM_BRANCH }}
           fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
 
       - name: Prepare upstream merge
         id: merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail

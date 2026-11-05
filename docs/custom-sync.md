@@ -16,7 +16,12 @@ increments upstream versions, or deploys a server.
    Actions to create pull requests, and ensure repository policy permits the
    workflow's contents, packages and pull-request write permissions.
 4. Run **Sync upstream and publish custom image** manually once and inspect its
-   result. No personal access token is needed: it uses the repository GITHUB_TOKEN.
+   result. Normal builds use GITHUB_TOKEN. To also synchronize upstream changes
+   to `.github/workflows`, add an `UPSTREAM_SYNC_TOKEN` repository Actions secret:
+   a dedicated token limited to this repository with Contents, Workflows and Pull
+   requests write permissions (classic tokens need repo and workflow scopes).
+   Without it GitHub rejects pushes that change workflows; the sync then stops.
+   Do not paste this token into chat or commit it to source control.
 
 ## Results and failures
 
@@ -34,7 +39,9 @@ setting above and rerun. Failed validation does not update the custom branch or
 the image. A publication failure after the branch update can be rerun manually.
 
 Bot pushes using GITHUB_TOKEN do not trigger another push workflow; validation
-and image publication are deliberately in this same workflow.
+and image publication are deliberately in this same workflow. A sync-token push
+can trigger one additional run; when it finds no further merge commits, its
+push does not change the branch and cannot create a perpetual loop.
 
 ## Version and deployment
 
